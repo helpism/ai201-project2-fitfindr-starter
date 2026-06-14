@@ -16,6 +16,9 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
+FitFindr neesds to search the database for a requested outfit by a user. If a user
+then needs a suggestion base on their current wardrobe, FitFindr has to provide the
+user with a recommendation.
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
