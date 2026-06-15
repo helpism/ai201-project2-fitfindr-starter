@@ -81,8 +81,9 @@ If the outfit input is missing or incomplete, the agent defaults to a standard "
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
 Think: The agent looks at the user's query and its system instructions to decide which tool to call first (usually the search tool).
-Act: It executes the tool with the necessary details (like "size M" or "under $30").
-Record: It takes the tool's output and saves it to the session state.
+Action: Based on its thought, the agent selects the appropriate tool and provides the exact parameters.For example: search_listings(description="vintage tee", max_price=30.0).
+Observation: The agent "observes" the raw data returned by the tool (the specific JSON list of shirts found in listings)
+Record: It takes the tool's output and saves it to the session state. It then loops back to the thinking step to decide the next move.
 ---
 
 ## State Management
