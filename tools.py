@@ -13,6 +13,7 @@ Tools:
 """
 
 import os
+import json
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -69,8 +70,32 @@ def search_listings(
 
     Before writing code, fill in the Tool 1 section of planning.md.
     """
-    # Replace this with your implementation
-    return []
+    listings = load_listings()
+    query = description.lower()
+    results = []
+
+    for item in listings:
+        # Check if description matches title, body, or style tags 
+        desc_match = (
+            query in item['title'].lower() or 
+            query in item['description'].lower() or 
+            any(query in tag.lower() for tag in item['style_tags'])
+        )
+        
+        # Check for size match (case-insensitive substring match)
+        size_match = True
+        if size:
+            size_match = size.lower() in item['size'].lower()
+            
+        # Check for price ceiling match 
+        price_match = True
+        if max_price is not None:
+            price_match = item['price'] <= max_price
+            
+        if desc_match and size_match and price_match:
+            results.append(item)
+
+    return results
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
@@ -100,8 +125,40 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    client = _get_groq_client()
+    wardrobe_items = wardrobe.get("items", [])
+
+    # If wardrobe is empty, generate generic advice based on tags/category [6, 7]
+    if not wardrobe_items:
+        system_prompt = (
+            "You are a fashion expert. The user has an empty wardrobe. "
+            "Provide generic styling advice based on the item's style tags and category."
+        )
+        user_prompt = (
+            f"I found this item: {new_item['title']}. It is a {new_item['category']} "
+            f"with tags: {', '.join(new_item['style_tags'])}. How should I style this generally?"
+        )
+    else:
+        system_prompt = (
+            "You are a personal stylist. Suggest 1-2 complete outfits by pairing the "
+            "new thrifted item with specific pieces from the user's wardrobe schema."
+        )
+        wardrobe_context = "\n".join([f"- {i['name']} ({', '.join(i['style_tags'])})" for i in wardrobe_items])
+        user_prompt = (
+            f"Thrifted Find: {new_item['title']} - {new_item['description']}\n"
+            f"Current Wardrobe:\n{wardrobe_context}\n\n"
+            "Suggest how to pair this find with my existing clothes."
+        )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+    )
+    return response.choices[0].message.content
+
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -133,5 +190,31 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    if not outfit or outfit.strip() == "":
+        return "Error: Cannot create a fit card because no outfit suggestion was provided."
+
+    client = _get_groq_client()
+    system_prompt = (
+        "You are a social media fashion influencer. Create a short, catchy "
+        "caption with emojis and hashtags highlighting a great thrift find."
+    )
+    user_prompt = (
+        f"Item: {new_item['title']} for ${new_item['price']}\n"
+        f"Outfit Description: {outfit}\n\n"
+        "Write a punchy social media caption for this look."
+    )
+
+    # Increased temperature (0.8) ensures varied outputs on repeat runs
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.8
+    )
+
+    print("\nDEBUG TYPE IS:", type(response.choices[0]))
+    print("DEBUG VALUE IS:", response.choices[0])
+    return response.choices[0].message.content
+    return response.choices[0].message.content
