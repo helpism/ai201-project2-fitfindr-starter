@@ -18,7 +18,15 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
+import json
+import os
+
+from dotenv import load_dotenv
+from groq import Groq
+
 from tools import search_listings, suggest_outfit, create_fit_card
+
+load_dotenv()
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -92,9 +100,91 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     Before writing code, complete the Planning Loop and State Management sections
     of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
+    # Step 1: Initialize session
     session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
+
+    # Step 2: Parse the query with the LLM (ReAct — Thought phase)
+    # Thought: extract structured parameters from the free-text query so that
+    # search_listings() receives typed arguments instead of a raw string.
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        session["error"] = "GROQ_API_KEY not set. Add it to a .env file."
+        return session
+
+    client = Groq(api_key=api_key)
+
+    parse_prompt = (
+        "Extract search parameters from the user's shopping query. "
+        "Return ONLY a JSON object with exactly these keys:\n"
+        '  "description": a short keyword phrase describing the item (string),\n'
+        '  "size": clothing size if mentioned, else null,\n'
+        '  "max_price": maximum price as a number if mentioned, else null.\n'
+        "Do not include any explanation or markdown — raw JSON only.\n\n"
+        f"Query: {query}"
+    )
+
+    # Action: call the LLM to parse the query
+    parse_response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": "You are a query parser. Output only valid JSON."},
+            {"role": "user", "content": parse_prompt},
+        ],
+        temperature=0.0,
+    )
+
+    # Observation: extract the parsed JSON
+    try:
+        raw = parse_response.choices[0].message.content.strip()
+        # Strip markdown code fences if the model wraps JSON in them
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, IndexError):
+        # Fallback: treat the whole query as the description
+        parsed = {"description": query, "size": None, "max_price": None}
+
+    # Record parsed parameters in session
+    session["parsed"] = parsed
+    description = parsed.get("description", query)
+    size = parsed.get("size") or None
+    max_price = parsed.get("max_price") or None
+
+    # Step 3: Action — call search_listings
+    # Thought: search the dataset with the extracted parameters.
+    results = search_listings(description, size=size, max_price=max_price)
+
+    # Observation + branching: stop early if no listings match
+    session["search_results"] = results
+    if not results:
+        session["error"] = (
+            f"No listings found for '{description}'"
+            + (f", size {size}" if size else "")
+            + (f", under ${max_price}" if max_price else "")
+            + ". Try broadening your search."
+        )
+        return session
+
+    # Step 4: Record — pick the top result
+    session["selected_item"] = results[0]
+
+    # Step 5: Action — suggest an outfit
+    # Thought: use the selected item and the user's wardrobe to produce outfit ideas.
+    outfit_suggestion = suggest_outfit(session["selected_item"], wardrobe)
+
+    # Observation + Record
+    session["outfit_suggestion"] = outfit_suggestion
+
+    # Step 6: Action — create a fit card caption
+    # Thought: turn the outfit suggestion into a shareable social-media caption.
+    fit_card = create_fit_card(session["outfit_suggestion"], session["selected_item"])
+
+    # Observation + Record
+    session["fit_card"] = fit_card
+
+    # Step 7: Return the completed session
     return session
 
 

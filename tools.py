@@ -71,30 +71,22 @@ def search_listings(
     Before writing code, fill in the Tool 1 section of planning.md.
     """
     listings = load_listings()
-    query = description.lower()
+    keywords = description.lower().split()  # Split 
     results = []
 
     for item in listings:
-        # Check if description matches title, body, or style tags 
-        desc_match = (
-            query in item['title'].lower() or 
-            query in item['description'].lower() or 
-            any(query in tag.lower() for tag in item['style_tags'])
-        )
+        # Combine title, description, and tags into one searchable string
+        searchable_text = (item['title'] + " " + item['description'] + " " + " ".join(item['style_tags'])).lower()
         
-        # Check for size match (case-insensitive substring match)
-        size_match = True
-        if size:
-            size_match = size.lower() in item['size'].lower()
-            
-        # Check for price ceiling match 
-        price_match = True
-        if max_price is not None:
-            price_match = item['price'] <= max_price
-            
+        # Ensure every word the user typed is found somewhere in the item data
+        desc_match = all(word in searchable_text for word in keywords)
+        
+        # Size and Price matching
+        size_match = not size or (size.lower() in item['size'].lower())
+        price_match = not max_price or (item['price'] <= float(max_price))
+
         if desc_match and size_match and price_match:
             results.append(item)
-
     return results
 
 
@@ -214,7 +206,4 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         temperature=0.8
     )
 
-    print("\nDEBUG TYPE IS:", type(response.choices[0]))
-    print("DEBUG VALUE IS:", response.choices[0])
-    return response.choices[0].message.content
     return response.choices[0].message.content
